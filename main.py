@@ -1,8 +1,10 @@
 import os
 from typing import Optional
-from utils.json_util import save_to_json, load_from_json
+
+from models import Applicant, Direction
+from utils.json_util import load_from_json, save_to_json
 from utils.web_parser import get_applicants
-from models import Direction, Applicant
+
 
 def merge_records(all_lists: list[list[Applicant]]) -> dict[int, Applicant]:
     """Объединяем записи с разных направлений по коду абитуриента."""
@@ -19,13 +21,16 @@ def merge_records(all_lists: list[list[Applicant]]) -> dict[int, Applicant]:
 
     return merged
 
+
 def get_points(app: Applicant, dir_name: str) -> Optional[int]:
     info = app.directions.get(dir_name)
     return None if not info else info.get("points")
 
+
 def get_priority(app: Applicant, dir_name: str) -> Optional[int]:
     info = app.directions.get(dir_name)
     return None if not info else info.get("priority")
+
 
 def build_preferences(merged: dict[int, Applicant]) -> dict[int, list[str]]:
     """
@@ -40,12 +45,16 @@ def build_preferences(merged: dict[int, Applicant]) -> dict[int, list[str]]:
             pts = info.get("points")
             if pr is not None and pts is not None:
                 pairs.append((pr, dname))
-        pairs.sort(key=lambda x: (x[0], x[1]))  # по приоритету, затем по названию для стабильности
+        pairs.sort(
+            key=lambda x: (x[0], x[1])
+        )  # по приоритету, затем по названию для стабильности
         prefs[code] = [d for _, d in pairs]
     return prefs
 
+
 def build_dir_quota_map(directions: list[Direction]) -> dict[str, int]:
     return {d.name: d.avaliable_budget_places for d in directions}
+
 
 def simulate_admissions(
     merged: dict[int, Applicant],
@@ -114,6 +123,7 @@ def simulate_admissions(
     accepted_by_dir = {dn: tentatives[dn] for dn in dir_names}
     return assigned_dir, accepted_by_dir
 
+
 def effective_list_for_direction(
     dir_name: str,
     merged: dict[int, Applicant],
@@ -153,6 +163,7 @@ def effective_list_for_direction(
     candidates.sort(key=lambda x: (-x[1], x[0]))
     return candidates
 
+
 def my_position(
     my_code: int,
     dir_name: str,
@@ -166,7 +177,9 @@ def my_position(
     """
     eff = effective_list_for_direction(dir_name, merged, assigned_dir)
     idx = None
-    my_points = get_points(merged.get(my_code), dir_name) if merged.get(my_code) else None
+    my_points = (
+        get_points(merged.get(my_code), dir_name) if merged.get(my_code) else None
+    )
     if my_points is None:
         return None, None, False, None
 
@@ -183,12 +196,13 @@ def my_position(
     in_quota = idx < quota
     return idx, above, in_quota, my_points
 
+
 def main():
     directions = [
-        Direction('ИВЧТ', '118', 12),
-        Direction('ИФСТ', '156', 29),
-        Direction('ПИНФ', '119', 15),
-        Direction('ПИНЖ', '120', 15),
+        Direction("ИВЧТ", "118", 12),
+        Direction("ИФСТ", "156", 29),
+        Direction("ПИНФ", "119", 15),
+        Direction("ПИНЖ", "120", 15),
     ]
 
     filename = "applicants.json"
@@ -217,7 +231,9 @@ def main():
 
     print(f"\nСимуляция зачислений...")
     print(f"Итоговое направление для {my_code}: {assigned_dir.get(my_code)}")
-    print("\nПозиции по направлениям (после учета чужих более приоритетных зачислений):")
+    print(
+        "\nПозиции по направлениям (после учета чужих более приоритетных зачислений):"
+    )
     for d in directions:
         pos, above, in_quota, my_points = my_position(
             my_code, d.name, merged, assigned_dir, dir_quota[d.name]
@@ -230,5 +246,6 @@ def main():
             f"квота {dir_quota[d.name]} → {'проходит' if in_quota else 'пока не проходит'}"
         )
 
+
 if __name__ == "__main__":
-	main()
+    main()

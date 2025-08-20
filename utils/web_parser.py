@@ -5,7 +5,7 @@ from typing import Optional
 import requests
 from bs4 import BeautifulSoup
 
-from models import Direction, Applicant
+from models import Applicant, Direction
 
 TABLE_HEADERS = {
     "code": "физическое лицо",
@@ -17,6 +17,7 @@ TABLE_HEADERS = {
 BASE_URL = "https://abitur.sstu.ru/vpo/direction/2025/{}/m/o/b"
 DIGITS_RE = re.compile(r"\b\d{4,}\b")
 
+
 def normalize_header(text: str) -> str:
     """Приводим заголовки к нижнему регистру, убираем переносы/скобки и двойные пробелы."""
     t = (text or "").lower()
@@ -27,6 +28,7 @@ def normalize_header(text: str) -> str:
     t = re.sub(r"\(.*?\)", "", t)
     t = re.sub(r"\s+", " ", t).strip()
     return t
+
 
 def pick_table(soup: BeautifulSoup):
     """Находим таблицу с нужными заголовками, если их несколько — берём последнюю."""
@@ -50,6 +52,7 @@ def pick_table(soup: BeautifulSoup):
         return None
     return matched[-1]
 
+
 def build_header_index(table) -> dict[str, int]:
     """Строим индекс колонок по ключам TABLE_HEADERS."""
     thead = table.find("thead")
@@ -64,6 +67,7 @@ def build_header_index(table) -> dict[str, int]:
                 break
     return idx
 
+
 def extract_code(cell_text: str) -> Optional[int]:
     """Достаём числовой код абитуриента из ячейки с лишним текстом."""
     # берём только первую строку до <div>, но на всякий случай — через regex
@@ -74,6 +78,7 @@ def extract_code(cell_text: str) -> Optional[int]:
         return int(match.group(0))
     except ValueError:
         return None
+
 
 def extract_int(cell_text: str) -> Optional[int]:
     cell_text = (cell_text or "").strip().replace("\xa0", " ")
@@ -87,6 +92,7 @@ def extract_int(cell_text: str) -> Optional[int]:
         except ValueError:
             return None
     return None
+
 
 def fetch_html(url: str, *, retries: int = 3, timeout: int = 20) -> str:
     last_err = None
@@ -108,6 +114,7 @@ def fetch_html(url: str, *, retries: int = 3, timeout: int = 20) -> str:
             if attempt < retries:
                 time.sleep(1.0 * attempt)
     raise RuntimeError(f"Не удалось загрузить {url}: {last_err}")
+
 
 def get_applicants(direction: Direction) -> list[Applicant]:
     """
@@ -155,7 +162,11 @@ def get_applicants(direction: Direction) -> list[Applicant]:
         consent = None
         if "consent" in header_idx and header_idx["consent"] < len(tds):
             consent_text = tds[header_idx["consent"]].get_text("", strip=True)
-            consent = True if "✓" in consent_text else (False if "—" in consent_text or consent_text == "" else None)
+            consent = (
+                True
+                if "✓" in consent_text
+                else (False if "—" in consent_text or consent_text == "" else None)
+            )
             if consent is None or consent is False:
                 continue
 
