@@ -1,7 +1,9 @@
+import os
 import re
 import time
 from dataclasses import dataclass
 from typing import Optional
+from json_util import save_to_json, load_from_json
 
 import requests
 from bs4 import BeautifulSoup
@@ -185,7 +187,6 @@ def get_applicants(direction: Direction) -> list[Applicant]:
 
     return applicants
 
-
 def merge_records(all_lists: list[list[Applicant]]) -> dict[int, Applicant]:
     """Объединяем записи с разных направлений по коду абитуриента."""
     merged: dict[int, Applicant] = {}
@@ -204,6 +205,7 @@ def merge_records(all_lists: list[list[Applicant]]) -> dict[int, Applicant]:
     return merged
 
 def main():
+    # my_code = 5063839
     directions = [
         Direction('ИВЧТ', '118', 12),
         Direction('ИФСТ', '156', 29),
@@ -211,13 +213,18 @@ def main():
         Direction('ПИНЖ', '120', 15),
     ]
 
-    # my_code = 5063839
+    filename = "applicants.json"
+    if os.path.exists(filename):
+        print("Загружаем данные из JSON...")
+        merged = load_from_json(filename)
+    else:
+        print("Парсим страницы...")
+        per_direction_lists = []
+        for direction in directions:
+            per_direction_lists.append(get_applicants(direction))
 
-    per_direction_lists = []
-    for direction in directions:
-        per_direction_lists.append(get_applicants(direction))
-
-    merged = merge_records(per_direction_lists)
+        merged = merge_records(per_direction_lists)
+        save_to_json(merged, filename)
 
     print(f"Уникальных абитуриентов: {len(merged)}")
 
