@@ -208,7 +208,7 @@ def main():
 
     assigned_dir, accepted_by_dir = simulate_admissions(merged, directions)
 
-    my_code = 5063839
+    my_code = int(input("Введите свой код абитуриента: "))
     dir_quota = build_dir_quota_map(directions)
 
     print(f"\nКвоты по направлениям:")
