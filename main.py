@@ -1,3 +1,5 @@
+"""Main module for analyzing university applications and rankings."""
+
 import os
 from typing import Optional
 
@@ -7,6 +9,14 @@ from utils.web_parser import get_applicants
 
 
 def merge_records(all_lists: list[list[Applicant]]) -> dict[int, Applicant]:
+    """Merge multiple lists of applicants into a single dictionary by applicant code.
+
+    Args:
+        all_lists: List of lists containing Applicant objects
+
+    Returns:
+        Dictionary mapping applicant codes to merged Applicant objects
+    """
     merged: dict[int, Applicant] = {}
 
     for lst in all_lists:
@@ -21,16 +31,42 @@ def merge_records(all_lists: list[list[Applicant]]) -> dict[int, Applicant]:
 
 
 def get_points(app: Applicant, dir_name: str) -> Optional[int]:
+    """Get the points for an applicant in a specific direction.
+
+    Args:
+        app: The applicant object
+        dir_name: Name of the direction
+
+    Returns:
+        The points if available, None otherwise
+    """
     info = app.directions.get(dir_name)
     return None if not info else info.get("points")
 
 
 def get_priority(app: Applicant, dir_name: str) -> Optional[int]:
+    """Get the priority for an applicant in a specific direction.
+
+    Args:
+        app: The applicant object
+        dir_name: Name of the direction
+
+    Returns:
+        The priority if available, None otherwise
+    """
     info = app.directions.get(dir_name)
     return None if not info else info.get("priority")
 
 
 def build_preferences(merged: dict[int, Applicant]) -> dict[int, list[str]]:
+    """Build preferences for each applicant based on priority and direction names.
+
+    Args:
+        merged: Dictionary of applicants indexed by code
+
+    Returns:
+        Dictionary mapping applicant codes to ordered list of preferred directions
+    """
     prefs: dict[int, list[str]] = {}
     for code, app in merged.items():
         pairs = []
@@ -45,13 +81,89 @@ def build_preferences(merged: dict[int, Applicant]) -> dict[int, list[str]]:
 
 
 def build_dir_quota_map(directions: list[Direction]) -> dict[str, int]:
+    """Build a mapping from direction names to their available budget places.
+
+    Args:
+        directions: List of Direction objects
+
+    Returns:
+        Dictionary mapping direction names to available budget places
+    """
     return {d.name: d.avaliable_budget_places for d in directions}
+
+
+def _rank_direction_pool(
+    merged: dict[int, Applicant], direction: str, pool: list[int]
+) -> list[int]:
+    """Rank applicants in a direction pool by points and code."""
+    filtered = [(code, get_points(merged[code], direction)) for code in pool]
+    filtered = [(c, pts) for c, pts in filtered if pts is not None]
+    filtered.sort(key=lambda x: (-x[1], x[0]))
+    return [c for c, _ in filtered]
+
+
+def _generate_proposals(
+    merged: dict[int, Applicant],
+    preferences: dict[int, list[str]],
+    assigned_dir: dict[int, Optional[str]],
+    next_choice_idx: dict[int, int],
+    dir_names: list[str],
+) -> dict[str, list[int]]:
+    """Generate proposals from unassigned applicants to directions."""
+    proposals: dict[str, list[int]] = {dn: [] for dn in dir_names}
+    for code in merged:
+        if assigned_dir[code] is None:
+            pref_list = preferences.get(code, [])
+            if next_choice_idx[code] < len(pref_list):
+                direction = pref_list[next_choice_idx[code]]
+                proposals[direction].append(code)
+                next_choice_idx[code] += 1
+    return proposals
+
+
+def _update_tentatives_and_assignments(
+    tentatives: dict[str, list[int]],
+    proposals: dict[str, list[int]],
+    dir_quota: dict[str, int],
+    merged: dict[int, Applicant],
+) -> tuple[bool, dict[int, Optional[str]]]:
+    """Update tentative assignments and return if changed."""
+    changed = False
+
+    for dn in tentatives.keys():
+        if not proposals[dn] and not tentatives[dn]:
+            continue
+        pool = list(set(tentatives[dn] + proposals[dn]))
+        ranked = _rank_direction_pool(merged, dn, pool)
+        keep = ranked[: dir_quota.get(dn, 0)]
+        if set(keep) != set(tentatives[dn]):
+            changed = True
+        tentatives[dn] = keep
+
+    # Create new assignments from tentatives
+    assigned_dir: dict[int, Optional[str]] = {code: None for code in merged.keys()}
+    for dn, lst in tentatives.items():
+        for code in lst:
+            assigned_dir[code] = dn
+
+    return changed, assigned_dir
 
 
 def simulate_admissions(
     merged: dict[int, Applicant],
     directions: list[Direction],
 ) -> tuple[dict[int, Optional[str]], dict[str, list[int]]]:
+    """Simulate the admission process using the Gale-Shapley algorithm.
+
+    Args:
+        merged: Dictionary of applicants indexed by code
+        directions: List of available directions
+
+    Returns:
+        Tuple containing:
+        - Dictionary mapping applicant codes to assigned directions
+        - Dictionary mapping direction names to lists of accepted applicant codes
+    """
     dir_quota = build_dir_quota_map(directions)
     dir_names = list(dir_quota.keys())
     prefs = build_preferences(merged)
@@ -60,48 +172,24 @@ def simulate_admissions(
     assigned_dir: dict[int, Optional[str]] = {code: None for code in merged.keys()}
     next_choice_idx: dict[int, int] = {code: 0 for code in merged.keys()}
 
-    def rank_dir_pool(dn: str, pool: list[int]) -> list[int]:
-        filtered = [(code, get_points(merged[code], dn)) for code in pool]
-        filtered = [(c, pts) for c, pts in filtered if pts is not None]
-        filtered.sort(key=lambda x: (-x[1], x[0]))
-        return [c for c, _ in filtered]
-
     changed = True
     while changed:
-        changed = False
+        proposals = _generate_proposals(
+            merged, prefs, assigned_dir, next_choice_idx, dir_names
+        )
 
-        proposals: dict[str, list[int]] = {dn: [] for dn in dir_names}
-        for code, app in merged.items():
-            if assigned_dir[code] is None:
-                pref_list = prefs.get(code, [])
-                if next_choice_idx[code] < len(pref_list):
-                    dn = pref_list[next_choice_idx[code]]
-                    proposals[dn].append(code)
-                    next_choice_idx[code] += 1
+        tentative_changed, new_assigned = _update_tentatives_and_assignments(
+            tentatives, proposals, dir_quota, merged
+        )
 
-        for dn in dir_names:
-            if not proposals[dn] and not tentatives[dn]:
-                continue
-            pool = list(set(tentatives[dn] + proposals[dn]))
-            ranked = rank_dir_pool(dn, pool)
-            keep = ranked[: dir_quota.get(dn, 0)]
-            if set(keep) != set(tentatives[dn]):
-                changed = True
-            tentatives[dn] = keep
-
-        new_assigned: dict[int, Optional[str]] = {code: None for code in merged.keys()}
-        for dn, lst in tentatives.items():
-            for code in lst:
-                new_assigned[code] = dn
-        if new_assigned != assigned_dir:
-            changed = True
-            assigned_dir = new_assigned
+        assignment_changed = new_assigned != assigned_dir
+        assigned_dir = new_assigned
+        changed = tentative_changed or assignment_changed
 
         if all(len(v) == 0 for v in proposals.values()) and not changed:
             break
 
-    accepted_by_dir = {dn: tentatives[dn] for dn in dir_names}
-    return assigned_dir, accepted_by_dir
+    return assigned_dir, tentatives
 
 
 def effective_list_for_direction(
@@ -109,6 +197,16 @@ def effective_list_for_direction(
     merged: dict[int, Applicant],
     assigned_dir: dict[int, Optional[str]],
 ) -> list[tuple[int, int]]:
+    """Get the effective ranking list for a specific direction.
+
+    Args:
+        dir_name: Name of the direction
+        merged: Dictionary of applicants indexed by code
+        assigned_dir: Dictionary mapping applicant codes to assigned directions
+
+    Returns:
+        List of tuples containing (applicant_code, points) sorted by ranking
+    """
     candidates: list[tuple[int, int]] = []
 
     for code, app in merged.items():
@@ -142,6 +240,18 @@ def my_position(
     assigned_dir: dict[int, Optional[str]],
     quota: int,
 ) -> tuple[Optional[int], Optional[int], bool, Optional[int]]:
+    """Calculate position and status for a specific applicant in a direction.
+
+    Args:
+        my_code: The applicant's code
+        dir_name: Name of the direction
+        merged: Dictionary of applicants indexed by code
+        assigned_dir: Dictionary mapping applicant codes to assigned directions
+        quota: Number of available places in the direction
+
+    Returns:
+        Tuple containing (position, people_above, in_quota, points)
+    """
     eff = effective_list_for_direction(dir_name, merged, assigned_dir)
     idx = None
     my_app = merged.get(my_code)
@@ -156,12 +266,12 @@ def my_position(
     if idx is None:
         return None, None, False, my_points
 
-    above = idx
     in_quota = idx < quota
-    return idx, above, in_quota, my_points
+    return idx, idx, in_quota, my_points
 
 
 def main():
+    """Main function to analyze university applications and rankings."""
     directions = [
         Direction("ИВЧТ", "118", 12),
         Direction("ИФСТ", "156", 29),
@@ -184,22 +294,22 @@ def main():
 
     print(f"Уникальных абитуриентов: {len(merged)}")
 
-    assigned_dir, accepted_by_dir = simulate_admissions(merged, directions)
+    assigned_dir, _ = simulate_admissions(merged, directions)
 
     my_code = int(input("Введите свой код абитуриента: "))
     dir_quota = build_dir_quota_map(directions)
 
-    print(f"\nКвоты по направлениям:")
+    print("\nКвоты по направлениям:")
     for d in directions:
         print(f"- {d.name}: {dir_quota[d.name]} мест")
 
-    print(f"\nСимуляция зачислений...")
+    print("\nСимуляция зачислений...")
     print(f"Итоговое направление для {my_code}: {assigned_dir.get(my_code)}")
     print(
         "\nПозиции по направлениям (после учета чужих более приоритетных зачислений):"
     )
     for d in directions:
-        pos, above, in_quota, my_points = my_position(
+        pos, _, in_quota, my_points = my_position(
             my_code, d.name, merged, assigned_dir, dir_quota[d.name]
         )
         if pos is None:

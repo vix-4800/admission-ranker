@@ -1,3 +1,5 @@
+"""Web parser utilities for scraping university application data."""
+
 import re
 import time
 from typing import Optional
@@ -19,6 +21,14 @@ DIGITS_RE = re.compile(r"\b\d{4,}\b")
 
 
 def normalize_header(text: str) -> str:
+    """Normalize table header text for consistent matching.
+
+    Args:
+        text: Raw header text from HTML
+
+    Returns:
+        Normalized header text
+    """
     t = (text or "").lower()
     t = t.replace("\n", " ").replace("\r", " ").replace("\t", " ")
     t = t.replace("<br>", " ")
@@ -29,6 +39,14 @@ def normalize_header(text: str) -> str:
 
 
 def pick_table(soup: BeautifulSoup):
+    """Find the most suitable table containing applicant data.
+
+    Args:
+        soup: BeautifulSoup object of the parsed HTML
+
+    Returns:
+        Table element or None if no suitable table found
+    """
     tables = soup.find_all("table")
     matched = []
 
@@ -51,6 +69,14 @@ def pick_table(soup: BeautifulSoup):
 
 
 def build_header_index(table) -> dict[str, int]:
+    """Build mapping from header types to column indices.
+
+    Args:
+        table: HTML table element
+
+    Returns:
+        Dictionary mapping header keys to column indices
+    """
     thead = table.find("thead")
     ths = thead.find_all("th")
     normalized = [normalize_header(th.get_text(" ", strip=True)) for th in ths]
@@ -65,6 +91,14 @@ def build_header_index(table) -> dict[str, int]:
 
 
 def extract_code(cell_text: str) -> Optional[int]:
+    """Extract applicant code from cell text.
+
+    Args:
+        cell_text: Text content of table cell
+
+    Returns:
+        Applicant code as integer or None if not found
+    """
     match = DIGITS_RE.search(cell_text)
     if not match:
         return None
@@ -75,6 +109,14 @@ def extract_code(cell_text: str) -> Optional[int]:
 
 
 def extract_int(cell_text: str) -> Optional[int]:
+    """Extract integer value from cell text.
+
+    Args:
+        cell_text: Text content of table cell
+
+    Returns:
+        Integer value or None if not found/parseable
+    """
     cell_text = (cell_text or "").strip().replace("\xa0", " ")
     cell_text = cell_text.replace(",", ".")
     m = re.search(r"-?\d+", cell_text)
@@ -87,6 +129,19 @@ def extract_int(cell_text: str) -> Optional[int]:
 
 
 def fetch_html(url: str, *, retries: int = 3, timeout: int = 20) -> str:
+    """Fetch HTML content from URL with retry logic.
+
+    Args:
+        url: URL to fetch
+        retries: Number of retry attempts (default: 3)
+        timeout: Request timeout in seconds (default: 20)
+
+    Returns:
+        HTML content as string
+
+    Raises:
+        Exception: If all retry attempts fail
+    """
     last_err = None
     for attempt in range(1, retries + 1):
         try:
@@ -101,14 +156,77 @@ def fetch_html(url: str, *, retries: int = 3, timeout: int = 20) -> str:
             )
             resp.raise_for_status()
             return resp.text
-        except Exception as e:
+        except (requests.RequestException, requests.Timeout, ValueError) as e:
             last_err = e
             if attempt < retries:
                 time.sleep(1.0 * attempt)
     raise RuntimeError(f"Не удалось загрузить {url}: {last_err}")
 
 
+def _extract_cell_value(
+    tds: list, header_idx: dict[str, int], key: str
+) -> Optional[str]:
+    """Extract text content from table cell if column exists."""
+    if key in header_idx and header_idx[key] < len(tds):
+        return tds[header_idx[key]].get_text(" ", strip=True)
+    return None
+
+
+def _process_table_row(
+    tds: list, header_idx: dict[str, int], direction: Direction
+) -> Optional[Applicant]:
+    """Process a single table row to extract applicant data."""
+    if not tds or len(tds) <= header_idx["code"]:
+        return None
+
+    code_text = _extract_cell_value(tds, header_idx, "code")
+    if not code_text:
+        return None
+
+    code = extract_code(code_text)
+    if code is None:
+        return None
+
+    points_text = _extract_cell_value(tds, header_idx, "points")
+    points = extract_int(points_text) if points_text else None
+
+    # Check consent - skip if not consented
+    consent_text = _extract_cell_value(tds, header_idx, "consent")
+    if consent_text:
+        consent = (
+            True
+            if "✓" in consent_text
+            else (False if "—" in consent_text or consent_text == "" else None)
+        )
+        if consent is None or consent is False:
+            return None
+
+    priority_text = _extract_cell_value(tds, header_idx, "priority")
+    priority = extract_int(priority_text) if priority_text else None
+
+    return Applicant(
+        code=code,
+        directions={
+            direction.name: {
+                "points": points,
+                "priority": priority,
+            }
+        },
+    )
+
+
 def get_applicants(direction: Direction) -> list[Applicant]:
+    """Extract applicant data for a specific direction from web page.
+
+    Args:
+        direction: Direction object containing name and URL code
+
+    Returns:
+        List of Applicant objects with extracted data
+
+    Raises:
+        RuntimeError: If table not found or required columns missing
+    """
     url = BASE_URL.format(direction.url_code)
     html = fetch_html(url)
     soup = BeautifulSoup(html, "html.parser")
@@ -127,48 +245,10 @@ def get_applicants(direction: Direction) -> list[Applicant]:
         return []
 
     applicants: list[Applicant] = []
-
     for tr in tbody.find_all("tr"):
         tds = tr.find_all(["td", "th"])
-        if not tds or len(tds) <= header_idx["code"]:
-            continue
-
-        code_text = tds[header_idx["code"]].get_text(" ", strip=True)
-        code = extract_code(code_text)
-        if code is None:
-            continue
-
-        points = None
-        if "points" in header_idx and header_idx["points"] < len(tds):
-            points_text = tds[header_idx["points"]].get_text(" ", strip=True)
-            points = extract_int(points_text)
-
-        consent = None
-        if "consent" in header_idx and header_idx["consent"] < len(tds):
-            consent_text = tds[header_idx["consent"]].get_text("", strip=True)
-            consent = (
-                True
-                if "✓" in consent_text
-                else (False if "—" in consent_text or consent_text == "" else None)
-            )
-            if consent is None or consent is False:
-                continue
-
-        priority = None
-        if "priority" in header_idx and header_idx["priority"] < len(tds):
-            priority_text = tds[header_idx["priority"]].get_text(" ", strip=True)
-            priority = extract_int(priority_text)
-
-        applicants.append(
-            Applicant(
-                code=code,
-                directions={
-                    direction.name: {
-                        "points": points,
-                        "priority": priority,
-                    }
-                },
-            )
-        )
+        applicant = _process_table_row(tds, header_idx, direction)
+        if applicant:
+            applicants.append(applicant)
 
     return applicants
