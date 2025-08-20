@@ -10,10 +10,8 @@ def merge_records(all_lists: list[list[Applicant]]) -> dict[int, Applicant]:
     for lst in all_lists:
         for rec in lst:
             if rec.code not in merged:
-                merged[rec.code] = Applicant(code=rec.code, consent=rec.consent, directions={})
-            # обновляем согласие, если его ещё не было
-            if merged[rec.code].consent in (None, "", "—") and rec.consent:
-                merged[rec.code].consent = rec.consent
+                merged[rec.code] = Applicant(code=rec.code, directions={})
+
             # сливаем направления
             for dir_name, info in rec.directions.items():
                 merged[rec.code].directions[dir_name] = info

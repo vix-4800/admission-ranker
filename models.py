@@ -11,4 +11,3 @@ class Direction:
 class Applicant:
     code: int
     directions: dict[str, dict[str, Optional[int]]]
-    consent: Optional[bool] = None

@@ -156,6 +156,8 @@ def get_applicants(direction: Direction) -> list[Applicant]:
         if "consent" in header_idx and header_idx["consent"] < len(tds):
             consent_text = tds[header_idx["consent"]].get_text("", strip=True)
             consent = True if "✓" in consent_text else (False if "—" in consent_text or consent_text == "" else None)
+            if consent is None or consent is False:
+                continue
 
         # Приоритет
         priority = None
@@ -166,7 +168,6 @@ def get_applicants(direction: Direction) -> list[Applicant]:
         applicants.append(
             Applicant(
                 code=code,
-                consent=consent,
                 directions={
                     direction.name: {
                         "points": points,

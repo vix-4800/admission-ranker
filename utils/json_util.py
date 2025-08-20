@@ -22,7 +22,6 @@ def load_from_json(filename: str = "applicants.json") -> dict[int, Applicant]:
     for code, rec in raw.items():
         merged[int(code)] = Applicant(
             code=int(code),
-            consent=rec.get("consent"),
             directions=rec.get("directions", {})
         )
     return merged
