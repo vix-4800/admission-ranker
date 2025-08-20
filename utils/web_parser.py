@@ -19,19 +19,16 @@ DIGITS_RE = re.compile(r"\b\d{4,}\b")
 
 
 def normalize_header(text: str) -> str:
-    """Приводим заголовки к нижнему регистру, убираем переносы/скобки и двойные пробелы."""
     t = (text or "").lower()
     t = t.replace("\n", " ").replace("\r", " ").replace("\t", " ")
     t = t.replace("<br>", " ")
 
-    # уберём всё в скобках, чтобы "Физическое лицо (уникальный код)" матчился на "физическое лицо"
     t = re.sub(r"\(.*?\)", "", t)
     t = re.sub(r"\s+", " ", t).strip()
     return t
 
 
 def pick_table(soup: BeautifulSoup):
-    """Находим таблицу с нужными заголовками, если их несколько — берём последнюю."""
     tables = soup.find_all("table")
     matched = []
 
@@ -54,7 +51,6 @@ def pick_table(soup: BeautifulSoup):
 
 
 def build_header_index(table) -> dict[str, int]:
-    """Строим индекс колонок по ключам TABLE_HEADERS."""
     thead = table.find("thead")
     ths = thead.find_all("th")
     normalized = [normalize_header(th.get_text(" ", strip=True)) for th in ths]
@@ -69,8 +65,6 @@ def build_header_index(table) -> dict[str, int]:
 
 
 def extract_code(cell_text: str) -> Optional[int]:
-    """Достаём числовой код абитуриента из ячейки с лишним текстом."""
-    # берём только первую строку до <div>, но на всякий случай — через regex
     match = DIGITS_RE.search(cell_text)
     if not match:
         return None
@@ -82,9 +76,7 @@ def extract_code(cell_text: str) -> Optional[int]:
 
 def extract_int(cell_text: str) -> Optional[int]:
     cell_text = (cell_text or "").strip().replace("\xa0", " ")
-    # заменим запятую на точку, если вдруг
     cell_text = cell_text.replace(",", ".")
-    # вытащим целое число в начале
     m = re.search(r"-?\d+", cell_text)
     if m:
         try:
@@ -117,11 +109,6 @@ def fetch_html(url: str, *, retries: int = 3, timeout: int = 20) -> str:
 
 
 def get_applicants(direction: Direction) -> list[Applicant]:
-    """
-    Парсим страницу направления и возвращаем список Applicants,
-    где directions = { <direction.name>: {"points": int|None, "priority": int|None} }
-    consent: True/False/None
-    """
     url = BASE_URL.format(direction.url_code)
     html = fetch_html(url)
     soup = BeautifulSoup(html, "html.parser")
@@ -146,19 +133,16 @@ def get_applicants(direction: Direction) -> list[Applicant]:
         if not tds or len(tds) <= header_idx["code"]:
             continue
 
-        # Код
         code_text = tds[header_idx["code"]].get_text(" ", strip=True)
         code = extract_code(code_text)
         if code is None:
             continue
 
-        # Баллы
         points = None
         if "points" in header_idx and header_idx["points"] < len(tds):
             points_text = tds[header_idx["points"]].get_text(" ", strip=True)
             points = extract_int(points_text)
 
-        # Согласие
         consent = None
         if "consent" in header_idx and header_idx["consent"] < len(tds):
             consent_text = tds[header_idx["consent"]].get_text("", strip=True)
@@ -170,7 +154,6 @@ def get_applicants(direction: Direction) -> list[Applicant]:
             if consent is None or consent is False:
                 continue
 
-        # Приоритет
         priority = None
         if "priority" in header_idx and header_idx["priority"] < len(tds):
             priority_text = tds[header_idx["priority"]].get_text(" ", strip=True)

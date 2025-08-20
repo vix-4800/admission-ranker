@@ -6,7 +6,6 @@ from models import Applicant
 
 
 def save_to_json(merged: dict[int, Applicant], filename: str = "applicants.json"):
-    # asdict преобразует dataclass в словарь
     data = {code: asdict(app) for code, app in merged.items()}
     with open(filename, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
@@ -19,7 +18,6 @@ def load_from_json(filename: str = "applicants.json") -> dict[int, Applicant]:
     with open(filename, "r", encoding="utf-8") as f:
         raw = json.load(f)
 
-    # нужно собрать обратно объекты Applicant
     merged: dict[int, Applicant] = {}
     for code, rec in raw.items():
         merged[int(code)] = Applicant(
