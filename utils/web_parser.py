@@ -29,8 +29,10 @@ def normalize_header(text: str) -> str:
     return t
 
 def pick_table(soup: BeautifulSoup):
-    """Находим таблицу с нужными заголовками."""
+    """Находим таблицу с нужными заголовками, если их несколько — берём последнюю."""
     tables = soup.find_all("table")
+    matched = []
+
     for table in tables:
         thead = table.find("thead")
         if not thead:
@@ -41,10 +43,12 @@ def pick_table(soup: BeautifulSoup):
         for key in TABLE_HEADERS.values():
             if any(key in h for h in normalized):
                 need_hits += 1
-        # достаточно, чтобы хотя бы код и баллы были найдены
         if need_hits >= 2:
-            return table
-    return None
+            matched.append(table)
+
+    if not matched:
+        return None
+    return matched[-1]
 
 def build_header_index(table) -> dict[str, int]:
     """Строим индекс колонок по ключам TABLE_HEADERS."""
