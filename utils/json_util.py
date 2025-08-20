@@ -2,7 +2,7 @@ from dataclasses import asdict
 import json
 import os
 
-from main import Applicant
+from models import Applicant
 
 def save_to_json(merged: dict[int, Applicant], filename: str = "applicants.json"):
     # asdict преобразует dataclass в словарь

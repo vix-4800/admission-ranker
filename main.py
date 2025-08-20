@@ -1,24 +1,12 @@
 import os
 import re
 import time
-from dataclasses import dataclass
 from typing import Optional
-from json_util import save_to_json, load_from_json
+from utils.json_util import save_to_json, load_from_json
+from models import Direction, Applicant
 
 import requests
 from bs4 import BeautifulSoup
-
-@dataclass
-class Direction:
-    name: str
-    url_code: str
-    avaliable_budget_places: int
-
-@dataclass
-class Applicant:
-    code: int
-    directions: dict[str, dict[str, Optional[int]]]
-    consent: Optional[bool] = None
 
 TABLE_HEADERS = {
     "code": "физическое лицо",
@@ -227,6 +215,8 @@ def main():
         save_to_json(merged, filename)
 
     print(f"Уникальных абитуриентов: {len(merged)}")
+    # some_code = next(iter(merged))
+    # print(merged[some_code])
 
 if __name__ == "__main__":
 	main()
