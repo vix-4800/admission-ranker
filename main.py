@@ -210,7 +210,13 @@ def main():
 
     my_code = 5063839
     dir_quota = build_dir_quota_map(directions)
-    print(f"\nИтоговое направление для {my_code}: {assigned_dir.get(my_code)}")
+
+    print(f"\nКвоты по направлениям:")
+    for d in directions:
+        print(f"- {d.name}: {dir_quota[d.name]} мест")
+
+    print(f"\nСимуляция зачислений...")
+    print(f"Итоговое направление для {my_code}: {assigned_dir.get(my_code)}")
     print("\nПозиции по направлениям (после учета чужих более приоритетных зачислений):")
     for d in directions:
         pos, above, in_quota, my_points = my_position(
@@ -220,7 +226,7 @@ def main():
             print(f"- {d.name}: не подавал/нет баллов")
             continue
         print(
-            f"- {d.name}: место #{pos+1}, выше {above}, баллы {my_points}, "
+            f"- {d.name}: место #{pos+1}, баллы {my_points}, "
             f"квота {dir_quota[d.name]} → {'проходит' if in_quota else 'пока не проходит'}"
         )
 
